@@ -191,7 +191,11 @@ export function LeadTrackerProvider({ children }: LeadTrackerProviderProps) {
       timestamp: new Date().toISOString()
     }
 
-    sharedModules.tracking.gtag('event', 'phone_call', callData)
+    sharedModules.tracking.gtag('event', {
+  event_category: 'lead',
+  event_label: 'phone_call',
+  ...callData
+});
     sharedModules.tracking.dataLayer(callData)
   }
 
