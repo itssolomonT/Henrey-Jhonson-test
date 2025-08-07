@@ -97,7 +97,9 @@ export default function AdminDashboard() {
     try {
       setLoading(true)
       setError('')
-      const apiUrl = 'http://localhost:4001/api/analytics/dashboard'
+      const apiUrl = process.env.NODE_ENV === 'production' 
+        ? '/api/analytics/dashboard'
+        : 'http://localhost:4001/api/analytics/dashboard'
       console.log('Fetching analytics from:', apiUrl)
       
       const response = await axios.get(apiUrl, {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, ReactNode } from 'react'
+import React, { useEffect, useState, ReactNode } from 'react'
 import { useMultiBrand } from './MultiBrandProvider'
 
 interface PerformanceOptimizerProps {
@@ -159,6 +159,8 @@ export function PerformanceOptimizer({ children }: PerformanceOptimizerProps) {
   useEffect(() => {
     // Load Google Analytics asynchronously
     const loadGA = () => {
+      if (typeof window === 'undefined') return
+      
       const script = document.createElement('script')
       script.async = true
       script.src = 'https://www.googletagmanager.com/gtag/js?id=GA_MEASUREMENT_ID'
@@ -176,16 +178,7 @@ export function PerformanceOptimizer({ children }: PerformanceOptimizerProps) {
     setTimeout(loadGA, 1000)
   }, [])
 
-  // Optimize images with WebP support
-  const getOptimizedImageSrc = (src: string, width: number = 800) => {
-    if (src.includes('http')) return src
-    
-    const baseName = src.replace(/\.[^/.]+$/, '')
-    const extension = src.split('.').pop()
-    
-    // Return WebP if supported, otherwise original
-    return `${baseName}-${width}.webp`
-  }
+
 
   // Optimize video loading
   const optimizeVideo = (src: string, poster: string, className: string = '') => {
@@ -209,6 +202,8 @@ export function PerformanceOptimizer({ children }: PerformanceOptimizerProps) {
 
   // Optimize animations for performance
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    
     // Reduce motion for users who prefer it
     const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
     
@@ -234,6 +229,17 @@ export function PerformanceOptimizer({ children }: PerformanceOptimizerProps) {
       {children}
     </div>
   )
+}
+
+// Optimize images with WebP support
+const getOptimizedImageSrc = (src: string, width: number = 800) => {
+  if (src.includes('http')) return src
+  
+  const baseName = src.replace(/\.[^/.]+$/, '')
+  const extension = src.split('.').pop()
+  
+  // Return WebP if supported, otherwise original
+  return `${baseName}-${width}.webp`
 }
 
 // Utility functions for performance optimization
