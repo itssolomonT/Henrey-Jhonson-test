@@ -1,5 +1,18 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
+  "/brands/bestsecurity/page": "app/brands/bestsecurity/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/api/analytics/dashboard/route": "app/api/analytics/dashboard/route.js",
+  "/brands/safehaven-nc/page": "app/brands/safehaven-nc/page.js",
+  "/brands/redhawk-alarms/page": "app/brands/redhawk-alarms/page.js",
+  "/brands/safehaven-sc/page": "app/brands/safehaven-sc/page.js",
+  "/brands/safehaven-tn/page": "app/brands/safehaven-tn/page.js",
+  "/contact/page": "app/contact/page.js",
+  "/brands/topsecurity/page": "app/brands/topsecurity/page.js",
+  "/cookies/page": "app/cookies/page.js",
+  "/features/page": "app/features/page.js",
   "/page": "app/page.js",
-  "/admin/page": "app/admin/page.js"
+  "/privacy/page": "app/privacy/page.js",
+  "/quote/page": "app/quote/page.js",
+  "/terms/page": "app/terms/page.js"
 }

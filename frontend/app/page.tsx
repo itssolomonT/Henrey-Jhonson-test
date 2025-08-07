@@ -7,7 +7,6 @@ import BrandRouter from './components/BrandRouter'
 import Layout from './components/Layout'
 import DynamicPhoneNumber from './components/DynamicPhoneNumber'
 import WeatherCard from './components/WeatherCard'
-import axios from 'axios'
 
 // Home page - main landing page
 
@@ -66,31 +65,6 @@ export default function HomePage() {
   const [weather, setWeather] = useState<WeatherData | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
-
-  // Get user location on page load
-  useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords
-          try {
-            const response = await axios.get(
-              `${process.env.NEXT_PUBLIC_API_URL}/api/location/coordinates/${latitude}/${longitude}`
-            )
-            if (response.data.success) {
-              setZipCode(response.data.data.zipCode)
-              handleZipCodeSubmit(response.data.data.zipCode)
-            }
-          } catch (error) {
-            console.error('Error getting location:', error)
-          }
-        },
-        (error) => {
-          console.error('Error getting location:', error)
-        }
-      )
-    }
-  }, [])
 
   // Handle ZIP code submission and find local brand
   const handleZipCodeSubmit = async (code: string) => {

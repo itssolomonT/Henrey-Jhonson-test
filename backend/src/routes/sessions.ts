@@ -1,61 +1,69 @@
 import express from 'express';
-// Mock data - no database needed
-import { Session, UTMParams } from '@safehaven/shared';
 
 const router = express.Router();
 
-// Create new session with enhanced tracking
+// Mock sessions data
+const mockSessions = [
+  {
+    id: '1',
+    sessionId: 'sess_001',
+    brandId: '1',
+    zipCode: '27000',
+    userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    ipAddress: '192.168.1.1',
+    referrer: 'https://google.com',
+    utmSource: 'google',
+    utmMedium: 'cpc',
+    utmCampaign: 'security_systems',
+    pageViews: 5,
+    timeOnSite: 180,
+    isReturnVisitor: false,
+    leadGenerated: true,
+    leadId: 'lead_001',
+    createdAt: new Date('2024-01-15T10:30:00Z'),
+    updatedAt: new Date('2024-01-15T10:45:00Z')
+  },
+  {
+    id: '2',
+    sessionId: 'sess_002',
+    brandId: '2',
+    zipCode: '29000',
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_7_1 like Mac OS X)',
+    ipAddress: '192.168.1.2',
+    referrer: 'https://facebook.com',
+    utmSource: 'facebook',
+    utmMedium: 'social',
+    utmCampaign: 'home_security',
+    pageViews: 3,
+    timeOnSite: 120,
+    isReturnVisitor: true,
+    leadGenerated: false,
+    leadId: null,
+    createdAt: new Date('2024-01-15T14:20:00Z'),
+    updatedAt: new Date('2024-01-15T14:35:00Z')
+  }
+];
+
+// Create new session
 router.post('/', async (req, res) => {
   try {
-    const {
-      brandId,
-      zipCode,
-      userAgent,
-      ipAddress,
-      referrer,
-      utmParams,
-      deviceType,
-      screenResolution,
-      language,
-      timezone
-    } = req.body;
+    const sessionData = req.body;
+    
+    // Mock session creation
+    const newSession = {
+      id: Date.now().toString(),
+      sessionId: `sess_${Date.now()}`,
+      ...sessionData,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
 
-    // Check if this is a return visitor
-    const existingSession = await prisma.session.findFirst({
-      where: {
-        ipAddress,
-        brandId,
-        createdAt: {
-          gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) // Last 30 days
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    const isReturnVisitor = !!existingSession;
-
-    const session = await prisma.session.create({
-      data: {
-        brandId,
-        zipCode,
-        userAgent,
-        ipAddress,
-        referrer,
-        utmParams,
-        isReturnVisitor,
-        deviceType,
-        screenResolution,
-        language,
-        timezone
-      },
-      include: {
-        brand: true
-      }
-    });
+    // In a real app, you would save to database here
+    mockSessions.push(newSession);
 
     res.status(201).json({
       success: true,
-      data: session
+      data: newSession
     });
   } catch (error) {
     console.error('Error creating session:', error);
@@ -66,21 +74,12 @@ router.post('/', async (req, res) => {
   }
 });
 
-// Get session by ID with personalization data
+// Get session by ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const session = await prisma.session.findUnique({
-      where: { id },
-      include: {
-        brand: true,
-        leads: {
-          include: {
-            events: true
-          }
-        }
-      }
-    });
+    
+    const session = mockSessions.find(s => s.id === id);
 
     if (!session) {
       return res.status(404).json({
@@ -89,16 +88,9 @@ router.get('/:id', async (req, res) => {
       });
     }
 
-    // Get personalization data for return visitors
-    const personalizationData = session.isReturnVisitor ? 
-      await getPersonalizationData(session) : null;
-
     res.json({
       success: true,
-      data: {
-        session,
-        personalization: personalizationData
-      }
+      data: session
     });
   } catch (error) {
     console.error('Error fetching session:', error);
@@ -109,73 +101,128 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Update session activity for tracking engagement
-router.patch('/:id/activity', async (req, res) => {
+// Update session
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const { 
-      pageUrl, 
-      timeOnPage, 
-      scrollDepth, 
-      interactions,
-      conversionIntent 
-    } = req.body;
+    const updateData = req.body;
+    
+    const sessionIndex = mockSessions.findIndex(s => s.id === id);
+    
+    if (sessionIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
+    }
 
-    const session = await prisma.session.update({
-      where: { id },
-      data: {
-        lastActivity: new Date(),
-        pageUrl,
-        timeOnPage,
-        scrollDepth,
-        interactions,
-        conversionIntent
-      }
-    });
+    // Mock session update
+    const updatedSession = {
+      ...mockSessions[sessionIndex],
+      ...updateData,
+      updatedAt: new Date()
+    };
+
+    mockSessions[sessionIndex] = updatedSession;
 
     res.json({
       success: true,
-      data: session
+      data: updatedSession
     });
   } catch (error) {
-    console.error('Error updating session activity:', error);
+    console.error('Error updating session:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to update session activity'
+      error: 'Failed to update session'
     });
   }
 });
 
-// Get sessions by brand with analytics
-router.get('/brand/:brandId', async (req, res) => {
+// Get all sessions with filtering
+router.get('/', async (req, res) => {
   try {
-    const { brandId } = req.params;
-    const { page = 1, limit = 20, startDate, endDate } = req.query;
+    const { 
+      page = 1, 
+      limit = 20, 
+      brandId, 
+      zipCode,
+      isReturnVisitor,
+      leadGenerated,
+      startDate,
+      endDate,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
 
-    const where: any = { brandId };
+    // Filter sessions based on query parameters
+    let filteredSessions = mockSessions;
+    
+    if (brandId) {
+      filteredSessions = filteredSessions.filter(session => 
+        session.brandId === brandId
+      );
+    }
+    
+    if (zipCode) {
+      filteredSessions = filteredSessions.filter(session => 
+        session.zipCode === zipCode
+      );
+    }
+    
+    if (isReturnVisitor !== undefined) {
+      filteredSessions = filteredSessions.filter(session => 
+        session.isReturnVisitor === (isReturnVisitor === 'true')
+      );
+    }
+    
+    if (leadGenerated !== undefined) {
+      filteredSessions = filteredSessions.filter(session => 
+        session.leadGenerated === (leadGenerated === 'true')
+      );
+    }
+    
     if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string)
-      };
+      const start = new Date(startDate as string);
+      const end = new Date(endDate as string);
+      filteredSessions = filteredSessions.filter(session => 
+        session.createdAt >= start && session.createdAt <= end
+      );
     }
 
-    const sessions = await prisma.session.findMany({
-      where,
-      include: {
-        brand: true,
-        leads: true
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (Number(page) - 1) * Number(limit),
-      take: Number(limit)
+    // Sort sessions
+    filteredSessions.sort((a, b) => {
+      const aValue = a[sortBy as keyof typeof a];
+      const bValue = b[sortBy as keyof typeof b];
+      
+      if (sortOrder === 'desc') {
+        return new Date(bValue as string).getTime() - new Date(aValue as string).getTime();
+      }
+      return new Date(aValue as string).getTime() - new Date(bValue as string).getTime();
     });
 
-    const total = await prisma.session.count({ where });
+    // Pagination
+    const total = filteredSessions.length;
+    const startIndex = (Number(page) - 1) * Number(limit);
+    const endIndex = startIndex + Number(limit);
+    const paginatedSessions = filteredSessions.slice(startIndex, endIndex);
+
+    // Calculate analytics
+    const analytics = {
+      totalSessions: total,
+      returnVisitors: filteredSessions.filter(s => s.isReturnVisitor).length,
+      newVisitors: filteredSessions.filter(s => !s.isReturnVisitor).length,
+      leadConversionRate: filteredSessions.length > 0 ? 
+        (filteredSessions.filter(s => s.leadGenerated).length / filteredSessions.length * 100).toFixed(2) : '0',
+      averageTimeOnSite: filteredSessions.length > 0 ? 
+        (filteredSessions.reduce((sum, s) => sum + s.timeOnSite, 0) / filteredSessions.length).toFixed(0) : '0',
+      averagePageViews: filteredSessions.length > 0 ? 
+        (filteredSessions.reduce((sum, s) => sum + s.pageViews, 0) / filteredSessions.length).toFixed(1) : '0'
+    };
 
     res.json({
       success: true,
-      data: sessions,
+      data: paginatedSessions,
+      analytics,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -192,75 +239,41 @@ router.get('/brand/:brandId', async (req, res) => {
   }
 });
 
-// Get session analytics for multi-brand scaling
-router.get('/analytics/:brandId', async (req, res) => {
+// Get session analytics
+router.get('/:id/analytics', async (req, res) => {
   try {
-    const { brandId } = req.params;
-    const { startDate, endDate } = req.query;
+    const { id } = req.params;
+    
+    const session = mockSessions.find(s => s.id === id);
 
-    const where: any = { brandId };
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string)
-      };
+    if (!session) {
+      return res.status(404).json({
+        success: false,
+        error: 'Session not found'
+      });
     }
 
-    const [
-      totalSessions,
-      returnVisitors,
-      newVisitors,
-      avgTimeOnSite,
-      conversionRate,
-      deviceBreakdown,
-      sourceBreakdown,
-      zipCodeBreakdown,
-      engagementMetrics
-    ] = await Promise.all([
-      prisma.session.count({ where }),
-      prisma.session.count({ where: { ...where, isReturnVisitor: true } }),
-      prisma.session.count({ where: { ...where, isReturnVisitor: false } }),
-      prisma.session.aggregate({
-        where,
-        _avg: { timeOnPage: true }
-      }),
-      calculateConversionRate(brandId, startDate as string, endDate as string),
-      prisma.session.groupBy({
-        by: ['deviceType'],
-        where,
-        _count: { id: true }
-      }),
-      prisma.session.groupBy({
-        by: ['referrer'],
-        where,
-        _count: { id: true }
-      }),
-      prisma.session.groupBy({
-        by: ['zipCode'],
-        where,
-        _count: { id: true }
-      }),
-      getEngagementMetrics(brandId, startDate as string, endDate as string)
-    ]);
+    // Mock analytics data
+    const analytics = {
+      sessionId: session.sessionId,
+      brandId: session.brandId,
+      zipCode: session.zipCode,
+      isReturnVisitor: session.isReturnVisitor,
+      leadGenerated: session.leadGenerated,
+      conversionRate: session.leadGenerated ? 100 : 0,
+      timeOnSite: session.timeOnSite,
+      pageViews: session.pageViews,
+      averageTimePerPage: session.timeOnSite / session.pageViews,
+      utmPerformance: {
+        source: session.utmSource,
+        medium: session.utmMedium,
+        campaign: session.utmCampaign
+      }
+    };
 
     res.json({
       success: true,
-      data: {
-        overview: {
-          totalSessions,
-          returnVisitors,
-          newVisitors,
-          returnVisitorRate: totalSessions > 0 ? (returnVisitors / totalSessions) * 100 : 0,
-          avgTimeOnSite: avgTimeOnSite._avg.timeOnPage || 0,
-          conversionRate
-        },
-        breakdowns: {
-          byDevice: deviceBreakdown,
-          bySource: sourceBreakdown,
-          byZipCode: zipCodeBreakdown
-        },
-        engagement: engagementMetrics
-      }
+      data: analytics
     });
   } catch (error) {
     console.error('Error fetching session analytics:', error);
@@ -270,159 +283,5 @@ router.get('/analytics/:brandId', async (req, res) => {
     });
   }
 });
-
-// Get personalization recommendations for return visitors
-router.get('/:id/personalization', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const session = await prisma.session.findUnique({
-      where: { id },
-      include: {
-        brand: true,
-        leads: true
-      }
-    });
-
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session not found'
-      });
-    }
-
-    const personalization = await getPersonalizationData(session);
-
-    res.json({
-      success: true,
-      data: personalization
-    });
-  } catch (error) {
-    console.error('Error fetching personalization:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch personalization'
-    });
-  }
-});
-
-// Helper functions
-async function getPersonalizationData(session: any) {
-  // Get user's previous interactions
-  const previousLeads = await prisma.lead.findMany({
-    where: {
-      session: {
-        ipAddress: session.ipAddress,
-        brandId: session.brandId
-      }
-    },
-    include: {
-      events: true
-    },
-    orderBy: { createdAt: 'desc' },
-    take: 5
-  });
-
-  // Get popular content for this brand
-  const popularContent = await getPopularContent(session.brandId);
-
-  // Get personalized recommendations
-  const recommendations = generateRecommendations(previousLeads, session);
-
-  return {
-    previousInteractions: previousLeads,
-    popularContent,
-    recommendations,
-    isReturnVisitor: session.isReturnVisitor,
-    lastVisit: previousLeads[0]?.createdAt || null
-  };
-}
-
-async function getPopularContent(brandId: string) {
-  // This would typically come from analytics data
-  // For now, return default content
-  return {
-    popularPages: ['/quote', '/contact', '/features'],
-    trendingFeatures: ['Smart Home Integration', 'Mobile App Control'],
-    recommendedCTAs: ['Get Free Quote', 'Schedule Consultation']
-  };
-}
-
-function generateRecommendations(previousLeads: any[], session: any) {
-  const recommendations = {
-    ctaText: 'Get Your Free Security Quote',
-    priorityFeatures: [],
-    personalizedMessage: ''
-  };
-
-  if (previousLeads.length > 0) {
-    const lastLead = previousLeads[0];
-    
-    if (lastLead.status === 'converted') {
-      recommendations.ctaText = 'Upgrade Your Security System';
-      recommendations.personalizedMessage = 'Welcome back! Ready to enhance your security?';
-    } else if (lastLead.status === 'rejected') {
-      recommendations.ctaText = 'Special Offer - Limited Time';
-      recommendations.personalizedMessage = 'We have a special offer just for you!';
-    }
-  }
-
-  return recommendations;
-}
-
-async function calculateConversionRate(brandId: string, startDate: string, endDate: string) {
-  const where: any = { brandId };
-  if (startDate && endDate) {
-    where.createdAt = {
-      gte: new Date(startDate),
-      lte: new Date(endDate)
-    };
-  }
-
-  const [totalSessions, convertedLeads] = await Promise.all([
-    prisma.session.count({ where }),
-    prisma.lead.count({
-      where: {
-        ...where,
-        status: 'converted'
-      }
-    })
-  ]);
-
-  return totalSessions > 0 ? (convertedLeads / totalSessions) * 100 : 0;
-}
-
-async function getEngagementMetrics(brandId: string, startDate: string, endDate: string) {
-  const where: any = { brandId };
-  if (startDate && endDate) {
-    where.createdAt = {
-      gte: new Date(startDate),
-      lte: new Date(endDate)
-    };
-  }
-
-  const [avgTimeOnPage, avgScrollDepth, highEngagementSessions] = await Promise.all([
-    prisma.session.aggregate({
-      where,
-      _avg: { timeOnPage: true }
-    }),
-    prisma.session.aggregate({
-      where,
-      _avg: { scrollDepth: true }
-    }),
-    prisma.session.count({
-      where: {
-        ...where,
-        timeOnPage: { gte: 300 }, // 5+ minutes
-        scrollDepth: { gte: 75 }  // 75%+ scroll
-      }
-    })
-  ]);
-
-  return {
-    avgTimeOnPage: avgTimeOnPage._avg.timeOnPage || 0,
-    avgScrollDepth: avgScrollDepth._avg.scrollDepth || 0,
-    highEngagementSessions
-  };
-}
 
 export default router; 

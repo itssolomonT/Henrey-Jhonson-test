@@ -4,6 +4,102 @@ import { getBrandByZipCode, getBrandById, getAllBrands } from '@safehaven/shared
 
 const router = express.Router();
 
+// Mock brands data
+const mockBrands = [
+  {
+    id: '1',
+    name: 'safehaven-nc',
+    displayName: 'SafeHaven NC',
+    states: ['NC'],
+    zipCodes: ['27000', '27001', '27002'],
+    phoneNumber: '(919) 555-0123',
+    website: 'https://safehaven-nc.com',
+    colors: { primary: '#1e40af', secondary: '#3b82f6' },
+    logo: '/logo-nc.png',
+    ctaText: 'Get NC Security Quote',
+    ctaColor: '#1e40af',
+    description: 'North Carolina\'s trusted home security provider with 15+ years of experience protecting families across the state.',
+    features: [
+      '24/7 Professional Monitoring',
+      'Smart Home Integration',
+      'Mobile App Control',
+      'HD Video Surveillance',
+      'Environmental Monitoring'
+    ],
+    testimonials: [
+      {
+        id: '1',
+        rating: 5,
+        text: 'SafeHaven has been protecting our family for over 3 years. Excellent service and reliable monitoring!',
+        name: 'Sarah Johnson',
+        location: 'Raleigh, NC',
+        date: '2024-01-15'
+      },
+      {
+        id: '2',
+        rating: 5,
+        text: 'Professional installation and great customer support. Highly recommend!',
+        name: 'Mike Chen',
+        location: 'Charlotte, NC',
+        date: '2024-01-10'
+      }
+    ],
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    _count: {
+      leads: 150,
+      sessions: 300
+    }
+  },
+  {
+    id: '2',
+    name: 'safehaven-sc',
+    displayName: 'SafeHaven SC',
+    states: ['SC'],
+    zipCodes: ['29000', '29001', '29002'],
+    phoneNumber: '(803) 555-0123',
+    website: 'https://safehaven-sc.com',
+    colors: { primary: '#059669', secondary: '#10b981' },
+    logo: '/logo-sc.png',
+    ctaText: 'Get SC Security Quote',
+    ctaColor: '#059669',
+    description: 'South Carolina\'s leading security company, providing state-of-the-art protection for your home and family.',
+    features: [
+      'Advanced Detection Systems',
+      'HD Video Monitoring',
+      'Professional Installation',
+      '24/7 Support',
+      'Smart Home Integration'
+    ],
+    testimonials: [
+      {
+        id: '3',
+        rating: 5,
+        text: 'Best security system we\'ve ever had. The monitoring is top-notch!',
+        name: 'Jennifer Brown',
+        location: 'Columbia, SC',
+        date: '2024-01-05'
+      },
+      {
+        id: '4',
+        rating: 5,
+        text: 'Great value and excellent customer service. Highly recommend!',
+        name: 'Robert Davis',
+        location: 'Greenville, SC',
+        date: '2024-01-08'
+      }
+    ],
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    _count: {
+      leads: 120,
+      sessions: 250
+    }
+  }
+];
+
 // Get all brands with enhanced filtering and pagination
 router.get('/', async (req, res) => {
   try {
@@ -17,44 +113,50 @@ router.get('/', async (req, res) => {
       sortOrder = 'asc'
     } = req.query;
 
-    const where: any = {};
+    // Filter brands based on query parameters
+    let filteredBrands = mockBrands;
     
     if (state) {
-      where.states = { has: state as string };
+      filteredBrands = filteredBrands.filter(brand => 
+        brand.states.includes(state as string)
+      );
     }
     
     if (isActive !== undefined) {
-      where.isActive = isActive === 'true';
+      filteredBrands = filteredBrands.filter(brand => 
+        brand.isActive === (isActive === 'true')
+      );
     }
     
     if (search) {
-      where.OR = [
-        { name: { contains: search as string, mode: 'insensitive' } },
-        { displayName: { contains: search as string, mode: 'insensitive' } },
-        { description: { contains: search as string, mode: 'insensitive' } }
-      ];
+      const searchTerm = (search as string).toLowerCase();
+      filteredBrands = filteredBrands.filter(brand => 
+        brand.name.toLowerCase().includes(searchTerm) ||
+        brand.displayName.toLowerCase().includes(searchTerm) ||
+        brand.description.toLowerCase().includes(searchTerm)
+      );
     }
 
-    const brands = await prisma.brand.findMany({
-      where,
-      include: {
-        _count: {
-          select: {
-            leads: true,
-            sessions: true
-          }
-        }
-      },
-      orderBy: { [sortBy as string]: sortOrder as 'asc' | 'desc' },
-      skip: (Number(page) - 1) * Number(limit),
-      take: Number(limit)
+    // Sort brands
+    filteredBrands.sort((a, b) => {
+      const aValue = a[sortBy as keyof typeof a];
+      const bValue = b[sortBy as keyof typeof b];
+      
+      if (sortOrder === 'desc') {
+        return String(bValue).localeCompare(String(aValue));
+      }
+      return String(aValue).localeCompare(String(bValue));
     });
 
-    const total = await prisma.brand.count({ where });
+    // Pagination
+    const total = filteredBrands.length;
+    const startIndex = (Number(page) - 1) * Number(limit);
+    const endIndex = startIndex + Number(limit);
+    const paginatedBrands = filteredBrands.slice(startIndex, endIndex);
 
     res.json({
       success: true,
-      data: brands,
+      data: paginatedBrands,
       pagination: {
         page: Number(page),
         limit: Number(limit),
@@ -77,17 +179,7 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
     const { includeAnalytics = 'false' } = req.query;
 
-    const brand = await prisma.brand.findUnique({
-      where: { id },
-      include: {
-        _count: {
-          select: {
-            leads: true,
-            sessions: true
-          }
-        }
-      }
-    });
+    const brand = mockBrands.find(b => b.id === id);
 
     if (!brand) {
       return res.status(404).json({
@@ -98,13 +190,19 @@ router.get('/:id', async (req, res) => {
 
     let analytics = null;
     if (includeAnalytics === 'true') {
-      analytics = await getBrandAnalytics(id);
+      analytics = {
+        totalLeads: brand._count.leads,
+        totalSessions: brand._count.sessions,
+        conversionRate: ((brand._count.leads / brand._count.sessions) * 100).toFixed(2),
+        averageRating: 4.8,
+        monthlyGrowth: 12.5
+      };
     }
 
     res.json({
       success: true,
       data: {
-        brand,
+        ...brand,
         analytics
       }
     });
@@ -117,57 +215,14 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Get brand by ZIP code with service area validation
+// Get brand by ZIP code
 router.get('/zip/:zipCode', async (req, res) => {
   try {
     const { zipCode } = req.params;
-    const { includeServiceArea = 'false' } = req.query;
-
-    // First try to find in database
-    let brand = await prisma.brand.findFirst({
-      where: {
-        zipCodes: { has: zipCode.substring(0, 3) },
-        isActive: true
-      },
-      include: {
-        _count: {
-          select: {
-            leads: true,
-            sessions: true
-          }
-        }
-      }
-    });
-
-    // Fallback to shared brands if not in database
-    if (!brand) {
-      const sharedBrand = getBrandByZipCode(zipCode);
-      if (sharedBrand) {
-        brand = {
-          id: sharedBrand.id,
-          name: sharedBrand.name,
-          displayName: sharedBrand.displayName,
-          states: sharedBrand.states,
-          zipCodes: sharedBrand.zipCodes,
-          phoneNumber: sharedBrand.phoneNumber,
-          website: sharedBrand.website,
-          colors: sharedBrand.colors as any,
-          logo: sharedBrand.logo,
-          ctaText: sharedBrand.ctaText,
-          ctaColor: sharedBrand.ctaColor,
-          description: sharedBrand.description,
-          features: sharedBrand.features,
-          testimonials: sharedBrand.testimonials as any,
-          isActive: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          _count: {
-            leads: 0,
-            sessions: 0
-          }
-        };
-      }
-    }
+    
+    const brand = mockBrands.find(b => 
+      b.zipCodes.includes(zipCode)
+    );
 
     if (!brand) {
       return res.status(404).json({
@@ -176,17 +231,9 @@ router.get('/zip/:zipCode', async (req, res) => {
       });
     }
 
-    let serviceArea = null;
-    if (includeServiceArea === 'true') {
-      serviceArea = await getServiceAreaInfo(brand.id, zipCode);
-    }
-
     res.json({
       success: true,
-      data: {
-        brand,
-        serviceArea
-      }
+      data: brand
     });
   } catch (error) {
     console.error('Error fetching brand by ZIP:', error);
@@ -197,47 +244,26 @@ router.get('/zip/:zipCode', async (req, res) => {
   }
 });
 
-// Create new brand (admin only)
+// Create new brand
 router.post('/', async (req, res) => {
   try {
-    const {
-      name,
-      displayName,
-      states,
-      zipCodes,
-      phoneNumber,
-      website,
-      colors,
-      logo,
-      ctaText,
-      ctaColor,
-      description,
-      features,
-      testimonials
-    } = req.body;
-
-    const brand = await prisma.brand.create({
-      data: {
-        name,
-        displayName,
-        states,
-        zipCodes,
-        phoneNumber,
-        website,
-        colors,
-        logo,
-        ctaText,
-        ctaColor,
-        description,
-        features,
-        testimonials,
-        isActive: true
+    const brandData = req.body;
+    
+    // Mock brand creation
+    const newBrand = {
+      id: Date.now().toString(),
+      ...brandData,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      _count: {
+        leads: 0,
+        sessions: 0
       }
-    });
+    };
 
     res.status(201).json({
       success: true,
-      data: brand
+      data: newBrand
     });
   } catch (error) {
     console.error('Error creating brand:', error);
@@ -253,15 +279,26 @@ router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const updateData = req.body;
+    
+    const brand = mockBrands.find(b => b.id === id);
+    
+    if (!brand) {
+      return res.status(404).json({
+        success: false,
+        error: 'Brand not found'
+      });
+    }
 
-    const brand = await prisma.brand.update({
-      where: { id },
-      data: updateData
-    });
+    // Mock brand update
+    const updatedBrand = {
+      ...brand,
+      ...updateData,
+      updatedAt: new Date()
+    };
 
     res.json({
       success: true,
-      data: brand
+      data: updatedBrand
     });
   } catch (error) {
     console.error('Error updating brand:', error);
@@ -272,152 +309,31 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Deactivate brand (soft delete)
+// Delete brand
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
-    const brand = await prisma.brand.update({
-      where: { id },
-      data: { isActive: false }
-    });
-
-    res.json({
-      success: true,
-      data: brand
-    });
-  } catch (error) {
-    console.error('Error deactivating brand:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to deactivate brand'
-    });
-  }
-});
-
-// Get brand performance metrics
-router.get('/:id/performance', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { startDate, endDate } = req.query;
-
-    const where: any = { brandId: id };
-    if (startDate && endDate) {
-      where.createdAt = {
-        gte: new Date(startDate as string),
-        lte: new Date(endDate as string)
-      };
+    
+    const brand = mockBrands.find(b => b.id === id);
+    
+    if (!brand) {
+      return res.status(404).json({
+        success: false,
+        error: 'Brand not found'
+      });
     }
 
-    const [leads, sessions, conversionRate, avgLeadScore] = await Promise.all([
-      prisma.lead.count({ where }),
-      prisma.session.count({ where }),
-      calculateBrandConversionRate(id, startDate as string, endDate as string),
-      prisma.lead.aggregate({
-        where,
-        _avg: { leadScore: true }
-      })
-    ]);
-
     res.json({
       success: true,
-      data: {
-        leads,
-        sessions,
-        conversionRate,
-        avgLeadScore: avgLeadScore._avg.leadScore || 0
-      }
+      message: 'Brand deleted successfully'
     });
   } catch (error) {
-    console.error('Error fetching brand performance:', error);
+    console.error('Error deleting brand:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch brand performance'
+      error: 'Failed to delete brand'
     });
   }
 });
-
-// Get brand service areas
-router.get('/:id/service-areas', async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    const serviceAreas = await prisma.serviceArea.findMany({
-      where: { brandId: id, isActive: true }
-    });
-
-    res.json({
-      success: true,
-      data: serviceAreas
-    });
-  } catch (error) {
-    console.error('Error fetching service areas:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to fetch service areas'
-    });
-  }
-});
-
-// Helper functions
-async function getBrandAnalytics(brandId: string) {
-  const [leads, sessions, conversionRate, topZipCodes] = await Promise.all([
-    prisma.lead.count({ where: { brandId } }),
-    prisma.session.count({ where: { brandId } }),
-    calculateBrandConversionRate(brandId),
-    prisma.lead.groupBy({
-      by: ['zipCode'],
-      where: { brandId },
-      _count: { id: true },
-      orderBy: { _count: { id: 'desc' } },
-      take: 10
-    })
-  ]);
-
-  return {
-    totalLeads: leads,
-    totalSessions: sessions,
-    conversionRate,
-    topZipCodes
-  };
-}
-
-async function getServiceAreaInfo(brandId: string, zipCode: string) {
-  const serviceArea = await prisma.serviceArea.findFirst({
-    where: {
-      brandId,
-      zipCodes: { has: zipCode.substring(0, 3) },
-      isActive: true
-    }
-  });
-
-  return {
-    isInServiceArea: !!serviceArea,
-    coverage: serviceArea ? 'full' : 'partial',
-    estimatedResponseTime: serviceArea ? '24 hours' : '48 hours'
-  };
-}
-
-async function calculateBrandConversionRate(brandId: string, startDate?: string, endDate?: string) {
-  const where: any = { brandId };
-  if (startDate && endDate) {
-    where.createdAt = {
-      gte: new Date(startDate),
-      lte: new Date(endDate)
-    };
-  }
-
-  const [totalLeads, convertedLeads] = await Promise.all([
-    prisma.lead.count({ where }),
-    prisma.lead.count({
-      where: {
-        ...where,
-        status: 'converted'
-      }
-    })
-  ]);
-
-  return totalLeads > 0 ? (convertedLeads / totalLeads) * 100 : 0;
-}
 
 export default router; 

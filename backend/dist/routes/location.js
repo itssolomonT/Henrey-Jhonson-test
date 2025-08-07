@@ -4,144 +4,171 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const axios_1 = __importDefault(require("axios"));
-const index_1 = require("../index");
+const shared_1 = require("@safehaven/shared");
 const router = express_1.default.Router();
-// Validate ZIP code and get location data
-router.get('/validate/:zipCode', async (req, res) => {
+// Mock brands data
+const mockBrands = [
+    {
+        id: '1',
+        name: 'safehaven-nc',
+        displayName: 'SafeHaven NC',
+        states: ['NC'],
+        zipCodes: ['27000', '27001', '27002'],
+        phoneNumber: '(919) 555-0123',
+        website: 'https://safehaven-nc.com',
+        colors: { primary: '#1e40af', secondary: '#3b82f6' },
+        logo: '/logo-nc.png',
+        ctaText: 'Get NC Security Quote',
+        ctaColor: '#1e40af',
+        description: 'North Carolina\'s trusted home security provider with 15+ years of experience protecting families across the state.',
+        features: [
+            '24/7 Professional Monitoring',
+            'Smart Home Integration',
+            'Mobile App Control',
+            'HD Video Surveillance',
+            'Environmental Monitoring'
+        ],
+        testimonials: [
+            {
+                id: '1',
+                rating: 5,
+                text: 'SafeHaven has been protecting our family for over 3 years. Excellent service and reliable monitoring!',
+                name: 'Sarah Johnson',
+                location: 'Raleigh, NC',
+                date: '2024-01-15'
+            },
+            {
+                id: '2',
+                rating: 5,
+                text: 'Professional installation and great customer support. Highly recommend!',
+                name: 'Mike Chen',
+                location: 'Charlotte, NC',
+                date: '2024-01-10'
+            }
+        ],
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+    },
+    {
+        id: '2',
+        name: 'safehaven-sc',
+        displayName: 'SafeHaven SC',
+        states: ['SC'],
+        zipCodes: ['29000', '29001', '29002'],
+        phoneNumber: '(803) 555-0123',
+        website: 'https://safehaven-sc.com',
+        colors: { primary: '#059669', secondary: '#10b981' },
+        logo: '/logo-sc.png',
+        ctaText: 'Get SC Security Quote',
+        ctaColor: '#059669',
+        description: 'South Carolina\'s leading security company, providing state-of-the-art protection for your home and family.',
+        features: [
+            'Advanced Detection Systems',
+            'HD Video Monitoring',
+            'Professional Installation',
+            '24/7 Support',
+            'Smart Home Integration'
+        ],
+        testimonials: [
+            {
+                id: '3',
+                rating: 5,
+                text: 'Best security system we\'ve ever had. The monitoring is top-notch!',
+                name: 'Jennifer Brown',
+                location: 'Columbia, SC',
+                date: '2024-01-05'
+            },
+            {
+                id: '4',
+                rating: 5,
+                text: 'Great value and excellent customer service. Highly recommend!',
+                name: 'Robert Davis',
+                location: 'Greenville, SC',
+                date: '2024-01-08'
+            }
+        ],
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
+    }
+];
+// Get brand by ZIP code
+router.get('/brand/:zipCode', async (req, res) => {
     try {
         const { zipCode } = req.params;
-        // Basic ZIP code validation
-        const zipRegex = /^\d{5}$/;
-        if (!zipRegex.test(zipCode)) {
-            return res.status(400).json({
-                success: false,
-                error: 'Invalid ZIP code format'
-            });
-        }
-        // Check if we have a brand for this ZIP code
-        const brand = await index_1.prisma.brand.findFirst({
-            where: {
-                isActive: true,
-                zipCodes: {
-                    has: zipCode
-                }
+        // First try to find in mock data
+        let brand = mockBrands.find(b => b.zipCodes.includes(zipCode) && b.isActive);
+        // Fallback to shared brands if not in mock data
+        if (!brand) {
+            const sharedBrand = (0, shared_1.getBrandByZipCode)(zipCode);
+            if (sharedBrand) {
+                brand = {
+                    id: sharedBrand.id,
+                    name: sharedBrand.name,
+                    displayName: sharedBrand.displayName,
+                    states: sharedBrand.states,
+                    zipCodes: sharedBrand.zipCodes,
+                    phoneNumber: sharedBrand.phoneNumber,
+                    website: sharedBrand.website,
+                    colors: sharedBrand.colors,
+                    logo: sharedBrand.logo,
+                    ctaText: sharedBrand.ctaText,
+                    ctaColor: sharedBrand.ctaColor,
+                    description: sharedBrand.description,
+                    features: sharedBrand.features,
+                    testimonials: sharedBrand.testimonials,
+                    isActive: true,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
             }
-        });
+        }
         if (!brand) {
             return res.status(404).json({
                 success: false,
-                error: 'No service available for this ZIP code'
+                error: 'No brand found for this ZIP code'
             });
         }
-        // Get location data from Google Maps API
-        const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-        if (!apiKey) {
-            return res.status(500).json({
-                success: false,
-                error: 'Google Maps API key not configured'
-            });
-        }
-        const response = await axios_1.default.get(`https://maps.googleapis.com/maps/api/geocode/json?address=${zipCode}&key=${apiKey}`);
-        if (response.data.results.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'ZIP code not found'
-            });
-        }
-        const result = response.data.results[0];
-        const locationData = {
-            zipCode,
-            city: '',
-            state: '',
-            county: '',
-            coordinates: {
-                lat: result.geometry.location.lat,
-                lng: result.geometry.location.lng
-            }
-        };
-        // Extract address components
-        result.address_components.forEach((component) => {
-            if (component.types.includes('locality')) {
-                locationData.city = component.long_name;
-            }
-            else if (component.types.includes('administrative_area_level_1')) {
-                locationData.state = component.short_name;
-            }
-            else if (component.types.includes('administrative_area_level_2')) {
-                locationData.county = component.long_name;
-            }
-        });
         res.json({
             success: true,
-            data: {
-                location: locationData,
-                brand: brand
-            }
+            data: brand
         });
     }
     catch (error) {
-        console.error('Error validating ZIP code:', error);
+        console.error('Error fetching brand by ZIP:', error);
         res.status(500).json({
             success: false,
-            error: 'Failed to validate ZIP code'
+            error: 'Failed to fetch brand by ZIP'
         });
     }
 });
-// Get location by coordinates
-router.get('/coordinates/:lat/:lng', async (req, res) => {
+// Get location info by ZIP code
+router.get('/info/:zipCode', async (req, res) => {
     try {
-        const { lat, lng } = req.params;
-        const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-        if (!apiKey) {
-            return res.status(500).json({
-                success: false,
-                error: 'Google Maps API key not configured'
-            });
-        }
-        const response = await axios_1.default.get(`https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&key=${apiKey}`);
-        if (response.data.results.length === 0) {
-            return res.status(404).json({
-                success: false,
-                error: 'Location not found'
-            });
-        }
-        const result = response.data.results[0];
-        let zipCode = '';
-        // Extract ZIP code from address components
-        result.address_components.forEach((component) => {
-            if (component.types.includes('postal_code')) {
-                zipCode = component.long_name;
-            }
-        });
-        if (!zipCode) {
-            return res.status(404).json({
-                success: false,
-                error: 'ZIP code not found for this location'
-            });
-        }
-        // Check if we have a brand for this ZIP code
-        const brand = await index_1.prisma.brand.findFirst({
-            where: {
-                isActive: true,
-                zipCodes: {
-                    has: zipCode
-                }
-            }
-        });
+        const { zipCode } = req.params;
+        // Mock location data
+        const locationData = {
+            zipCode,
+            city: zipCode === '27000' ? 'Charlotte' : zipCode === '29000' ? 'Columbia' : zipCode === '37000' ? 'Nashville' : 'Atlanta',
+            state: zipCode === '27000' ? 'NC' : zipCode === '29000' ? 'SC' : zipCode === '37000' ? 'TN' : 'GA',
+            county: 'Local County',
+            coordinates: { lat: 35.2271, lng: -80.8431 },
+            timezone: 'America/New_York',
+            population: 850000,
+            crimeRate: 'Low',
+            responseTime: '24 hours'
+        };
         res.json({
             success: true,
-            data: {
-                zipCode,
-                brand
-            }
+            data: locationData
         });
     }
     catch (error) {
-        console.error('Error getting location by coordinates:', error);
+        console.error('Error fetching location info:', error);
         res.status(500).json({
             success: false,
-            error: 'Failed to get location by coordinates'
+            error: 'Failed to fetch location info'
         });
     }
 });

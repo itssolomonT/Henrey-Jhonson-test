@@ -4,53 +4,83 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
-const index_1 = require("../index");
+const client_1 = require("@prisma/client");
+const prisma = new client_1.PrismaClient();
 const router = express_1.default.Router();
-// Create new lead with enhanced tracking
+// Enhanced lead creation with SafeHaven-specific tracking
 router.post('/', async (req, res) => {
     try {
         const { brandId, firstName, lastName, email, phone, zipCode, address, source, utmParams, sessionId, conversionType, // 'phone_call', 'form_submit', 'chat', 'quote_request'
         deviceType, // 'mobile', 'desktop', 'tablet'
-        pageUrl, timeOnPage, scrollDepth, previousVisits } = req.body;
-        // Enhanced lead data with conversion tracking
-        const lead = await index_1.prisma.lead.create({
-            data: {
-                brandId,
-                firstName,
-                lastName,
-                email,
-                phone,
-                zipCode,
-                address,
+        pageUrl, timeOnPage, scrollDepth, previousVisits, 
+        // SafeHaven specific fields
+        callSource, // 'inbound', 'outbound', 'door_knocking', 'online'
+        salesTeam, // 'national_call_center', 'branch_level'
+        leadPriority, // 'high', 'medium', 'low' based on SafeHaven criteria
+        expectedCloseTime, // calculated based on 1.7 day average
+        marketSegment, // ZIP code based market analysis
+        brandSpecificData // brand-specific tracking data
+         } = req.body;
+        // Check for existing lead (return visitor personalization)
+        const existingLead = await prisma.lead.findFirst({
+            where: {
+                OR: [
+                    { email },
+                    { phone }
+                ],
+                brandId
+            }
+        });
+        // Enhanced lead data with SafeHaven tracking
+        const leadData = {
+            brandId,
+            firstName,
+            lastName,
+            email,
+            phone,
+            zipCode,
+            address,
+            source,
+            utmParams,
+            sessionId,
+            conversionType,
+            deviceType,
+            pageUrl,
+            timeOnPage,
+            scrollDepth,
+            previousVisits,
+            status: 'new',
+            // SafeHaven specific tracking
+            callSource: callSource || 'online',
+            salesTeam: salesTeam || 'national_call_center',
+            leadPriority: leadPriority || calculateSafeHavenPriority(source, utmParams, callSource),
+            expectedCloseTime: expectedCloseTime || calculateSafeHavenCloseTime(source, callSource),
+            marketSegment: marketSegment || await getMarketSegment(zipCode),
+            brandSpecificData: brandSpecificData || {},
+            // Enhanced scoring for SafeHaven
+            leadScore: calculateSafeHavenLeadScore({
                 source,
-                utmParams,
-                sessionId,
-                conversionType,
                 deviceType,
-                pageUrl,
                 timeOnPage,
                 scrollDepth,
                 previousVisits,
-                status: 'new',
-                // Track sales cycle metrics
-                leadScore: calculateLeadScore({
-                    source,
-                    deviceType,
-                    timeOnPage,
-                    scrollDepth,
-                    previousVisits,
-                    utmParams
-                }),
-                expectedCloseTime: calculateExpectedCloseTime(source, utmParams),
-                priority: calculatePriority(source, utmParams)
-            },
+                utmParams,
+                callSource,
+                existingLead: existingLead ? true : false
+            }),
+            // Return visitor personalization
+            isReturnVisitor: existingLead ? true : false,
+            previousInteractions: existingLead ? 1 : 0
+        };
+        const lead = await prisma.lead.create({
+            data: leadData,
             include: {
                 brand: true,
                 session: true
             }
         });
-        // Track lead creation event for analytics
-        await index_1.prisma.leadEvent.create({
+        // Track lead creation event for SafeHaven analytics
+        await prisma.leadEvent.create({
             data: {
                 leadId: lead.id,
                 eventType: 'lead_created',
@@ -58,13 +88,40 @@ router.post('/', async (req, res) => {
                     source,
                     conversionType,
                     deviceType,
-                    utmParams
+                    utmParams,
+                    callSource,
+                    salesTeam,
+                    leadPriority: leadData.leadPriority,
+                    expectedCloseTime: leadData.expectedCloseTime,
+                    isReturnVisitor: leadData.isReturnVisitor
                 }
             }
         });
+        // If return visitor, create personalization event
+        if (existingLead) {
+            await prisma.leadEvent.create({
+                data: {
+                    leadId: lead.id,
+                    eventType: 'return_visitor_personalization',
+                    eventData: {
+                        previousLeadId: existingLead.id,
+                        previousInteractions: 1,
+                        personalizationData: {
+                            preferredContactMethod: existingLead.phone ? 'phone' : 'email',
+                            previousInterests: []
+                        }
+                    }
+                }
+            });
+        }
         res.status(201).json({
             success: true,
-            data: lead
+            data: lead,
+            personalization: existingLead ? {
+                isReturnVisitor: true,
+                previousInteractions: 1,
+                recommendedNextSteps: getRecommendedNextSteps(existingLead)
+            } : null
         });
     }
     catch (error) {
@@ -84,7 +141,7 @@ router.get('/brand/:brandId', async (req, res) => {
         if (status) {
             where.status = status;
         }
-        const leads = await index_1.prisma.lead.findMany({
+        const leads = await prisma.lead.findMany({
             where,
             include: {
                 brand: true,
@@ -94,7 +151,7 @@ router.get('/brand/:brandId', async (req, res) => {
             skip: (Number(page) - 1) * Number(limit),
             take: Number(limit)
         });
-        const total = await index_1.prisma.lead.count({ where });
+        const total = await prisma.lead.count({ where });
         res.json({
             success: true,
             data: leads,
@@ -118,7 +175,7 @@ router.get('/brand/:brandId', async (req, res) => {
 router.get('/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const lead = await index_1.prisma.lead.findUnique({
+        const lead = await prisma.lead.findUnique({
             where: { id },
             include: {
                 brand: true,
@@ -149,7 +206,7 @@ router.patch('/:id/status', async (req, res) => {
     try {
         const { id } = req.params;
         const { status, notes } = req.body;
-        const lead = await index_1.prisma.lead.update({
+        const lead = await prisma.lead.update({
             where: { id },
             data: { status, notes },
             include: {
@@ -184,39 +241,39 @@ router.get('/analytics/:brandId', async (req, res) => {
         }
         // Comprehensive analytics for scaling across 30+ brands
         const [totalLeads, newLeads, convertedLeads, rejectedLeads, avgLeadScore, avgTimeToClose, conversionBySource, conversionByDevice, conversionByZipCode, dailyTrends, salesCycleMetrics] = await Promise.all([
-            index_1.prisma.lead.count({ where }),
-            index_1.prisma.lead.count({ where: { ...where, status: 'new' } }),
-            index_1.prisma.lead.count({ where: { ...where, status: 'converted' } }),
-            index_1.prisma.lead.count({ where: { ...where, status: 'rejected' } }),
-            index_1.prisma.lead.aggregate({
+            prisma.lead.count({ where }),
+            prisma.lead.count({ where: { ...where, status: 'new' } }),
+            prisma.lead.count({ where: { ...where, status: 'converted' } }),
+            prisma.lead.count({ where: { ...where, status: 'rejected' } }),
+            prisma.lead.aggregate({
                 where,
                 _avg: { leadScore: true }
             }),
-            index_1.prisma.lead.aggregate({
+            prisma.lead.aggregate({
                 where: { ...where, status: 'converted' },
                 _avg: {
                     timeToClose: true
                 }
             }),
-            index_1.prisma.lead.groupBy({
+            prisma.lead.groupBy({
                 by: ['source'],
                 where,
                 _count: { id: true },
                 _avg: { leadScore: true }
             }),
-            index_1.prisma.lead.groupBy({
+            prisma.lead.groupBy({
                 by: ['deviceType'],
                 where,
                 _count: { id: true },
                 _avg: { leadScore: true }
             }),
-            index_1.prisma.lead.groupBy({
+            prisma.lead.groupBy({
                 by: ['zipCode'],
                 where,
                 _count: { id: true },
                 _avg: { leadScore: true }
             }),
-            index_1.prisma.lead.groupBy({
+            prisma.lead.groupBy({
                 by: ['createdAt'],
                 where,
                 _count: { id: true }
@@ -264,7 +321,7 @@ router.get('/performance/zip/:zipCode', async (req, res) => {
         if (brandId) {
             where.brandId = brandId;
         }
-        const performance = await index_1.prisma.lead.groupBy({
+        const performance = await prisma.lead.groupBy({
             by: ['brandId', 'status'],
             where,
             _count: { id: true },
@@ -288,7 +345,7 @@ router.post('/:id/events', async (req, res) => {
     try {
         const { id } = req.params;
         const { eventType, eventData } = req.body;
-        const event = await index_1.prisma.leadEvent.create({
+        const event = await prisma.leadEvent.create({
             data: {
                 leadId: id,
                 eventType,
@@ -377,15 +434,15 @@ async function getSalesCycleMetrics(brandId, startDate, endDate) {
         };
     }
     const [avgTimeToClose, avgTimeToRejection, conversionByDay] = await Promise.all([
-        index_1.prisma.lead.aggregate({
+        prisma.lead.aggregate({
             where: { ...where, status: 'converted' },
             _avg: { timeToClose: true }
         }),
-        index_1.prisma.lead.aggregate({
+        prisma.lead.aggregate({
             where: { ...where, status: 'rejected' },
             _avg: { timeToRejection: true }
         }),
-        index_1.prisma.lead.groupBy({
+        prisma.lead.groupBy({
             by: ['createdAt'],
             where: { ...where, status: 'converted' },
             _count: { id: true }
@@ -396,6 +453,102 @@ async function getSalesCycleMetrics(brandId, startDate, endDate) {
         avgTimeToRejection: avgTimeToRejection._avg.timeToRejection || 0,
         conversionByDay
     };
+}
+// SafeHaven-specific helper functions
+function calculateSafeHavenPriority(source, utmParams, callSource) {
+    // High priority for inbound calls and high-intent sources
+    if (callSource === 'inbound')
+        return 'high';
+    if (source === 'paid_search' && utmParams?.term?.includes('quote'))
+        return 'high';
+    if (source === 'organic_search' && utmParams?.term?.includes('security'))
+        return 'high';
+    // Medium priority for return visitors and social media
+    if (source === 'social_media')
+        return 'medium';
+    if (source === 'referral')
+        return 'medium';
+    return 'low';
+}
+function calculateSafeHavenCloseTime(source, callSource) {
+    // SafeHaven average sales cycle: 1.7 days
+    const baseTime = 1.7 * 24 * 60 * 60 * 1000; // 1.7 days in milliseconds
+    let multiplier = 1;
+    // Inbound calls close faster
+    if (callSource === 'inbound')
+        multiplier = 0.8;
+    // Door knocking takes longer
+    if (callSource === 'door_knocking')
+        multiplier = 1.5;
+    // Online leads take standard time
+    if (callSource === 'online')
+        multiplier = 1.2;
+    return new Date(Date.now() + (baseTime * multiplier));
+}
+async function getMarketSegment(zipCode) {
+    // Simple market segmentation based on ZIP code
+    const zipPrefix = zipCode.substring(0, 3);
+    // High-value markets (example ZIP ranges)
+    if (['100', '101', '102', '200', '201', '202'].includes(zipPrefix)) {
+        return 'premium_urban';
+    }
+    // Suburban markets
+    if (['300', '301', '400', '401', '500', '501'].includes(zipPrefix)) {
+        return 'suburban_family';
+    }
+    // Rural markets
+    if (['600', '601', '700', '701', '800', '801'].includes(zipPrefix)) {
+        return 'rural_community';
+    }
+    return 'standard_market';
+}
+function calculateSafeHavenLeadScore(data) {
+    let score = 0;
+    // Base scoring from existing function
+    const sourceScores = {
+        'organic_search': 10,
+        'paid_search': 15,
+        'social_media': 12,
+        'direct': 8,
+        'referral': 14,
+        'email': 16
+    };
+    score += sourceScores[data.source] || 5;
+    // SafeHaven-specific scoring
+    if (data.callSource === 'inbound')
+        score += 25; // Inbound calls are highest value
+    if (data.callSource === 'door_knocking')
+        score += 20; // Door knocking is high value
+    if (data.existingLead)
+        score += 15; // Return visitors
+    // Device scoring (mobile-first)
+    if (data.deviceType === 'mobile')
+        score += 8; // Mobile users more likely to convert
+    if (data.deviceType === 'desktop')
+        score += 5;
+    // Engagement scoring
+    if (data.timeOnPage > 300)
+        score += 10; // 5+ minutes
+    if (data.scrollDepth > 75)
+        score += 8; // Deep scroll
+    if (data.previousVisits > 0)
+        score += 15; // Return visitor
+    // UTM parameter scoring
+    if (data.utmParams?.campaign?.includes('high-intent'))
+        score += 20;
+    if (data.utmParams?.term?.includes('quote'))
+        score += 15;
+    if (data.utmParams?.term?.includes('security'))
+        score += 12;
+    return Math.min(score, 100); // Cap at 100
+}
+function getRecommendedNextSteps(existingLead) {
+    const recommendations = [];
+    // Default recommendations for return visitors
+    recommendations.push('Get a free security quote');
+    recommendations.push('View our pricing plans');
+    recommendations.push('Speak with a security expert');
+    return recommendations;
 }
 exports.default = router;
 //# sourceMappingURL=leads.js.map

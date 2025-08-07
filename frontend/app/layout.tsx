@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import { Providers } from './providers'
@@ -17,7 +17,6 @@ export const metadata: Metadata = {
   description: 'Professional home security solutions across the Southeast',
   keywords: 'home security, alarm systems, monitoring, safety',
   authors: [{ name: 'SafeHaven Security Systems' }],
-  viewport: 'width=device-width, initial-scale=1',
   robots: 'index, follow',
   // Performance optimizations
   other: {
@@ -26,6 +25,11 @@ export const metadata: Metadata = {
     'X-XSS-Protection': '1; mode=block',
     'Referrer-Policy': 'strict-origin-when-cross-origin'
   }
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
 }
 
 export default function RootLayout({
