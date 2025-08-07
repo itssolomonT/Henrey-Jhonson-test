@@ -1,5 +1,5 @@
 import express from 'express';
-import { prisma } from '../index';
+// Mock data - no database needed
 import { getBrandByZipCode, getBrandById, getAllBrands } from '@safehaven/shared';
 
 const router = express.Router();

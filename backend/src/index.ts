@@ -5,6 +5,7 @@ import compression from 'compression';
 import morgan from 'morgan';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
+import analyticsRouter from './routes/analytics';
 
 // Load environment variables
 dotenv.config();
@@ -34,6 +35,9 @@ app.use(morgan('combined'));
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Register routes
+app.use('/api/analytics', analyticsRouter);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

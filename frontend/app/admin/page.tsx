@@ -96,11 +96,37 @@ export default function AdminDashboard() {
   const fetchAnalytics = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001'}/api/analytics/dashboard`)
-      setAnalytics(response.data.data)
-    } catch (error) {
+      setError('')
+      const apiUrl = 'http://localhost:4001/api/analytics/dashboard'
+      console.log('Fetching analytics from:', apiUrl)
+      
+      const response = await axios.get(apiUrl, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        timeout: 10000
+      })
+      
+      console.log('Analytics response:', response.data)
+      
+      if (response.data && response.data.success) {
+        setAnalytics(response.data.data)
+        console.log('Analytics data set:', response.data.data)
+      } else {
+        console.error('Invalid response format:', response.data)
+        setError('Invalid response format from server')
+      }
+    } catch (error: any) {
       console.error('Error fetching analytics:', error)
-      setError('Failed to fetch analytics data')
+      if (error.response) {
+        console.error('Response error:', error.response.data)
+        setError(`Server error: ${error.response.status}`)
+      } else if (error.request) {
+        console.error('Request error:', error.request)
+        setError('Network error: Unable to reach server')
+      } else {
+        setError('Failed to fetch analytics data')
+      }
     } finally {
       setLoading(false)
     }
@@ -477,6 +503,15 @@ export default function AdminDashboard() {
         ) : (
           <div className="text-center py-12">
             <p className="text-gray-500">No analytics data available</p>
+            <p className="text-sm text-gray-400 mt-2">Debug: analytics = {JSON.stringify(analytics)}</p>
+            <p className="text-sm text-gray-400">Debug: loading = {loading.toString()}</p>
+            <p className="text-sm text-gray-400">Debug: error = {error}</p>
+            <button 
+              onClick={fetchAnalytics}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+            >
+              Retry Fetch Analytics
+            </button>
           </div>
         )}
       </main>

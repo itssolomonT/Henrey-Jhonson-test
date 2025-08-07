@@ -1,6 +1,6 @@
 import express from 'express';
 import axios from 'axios';
-import { prisma } from '../index';
+// Mock data - no database needed
 import { LocationData } from '@safehaven/shared';
 
 const router = express.Router();

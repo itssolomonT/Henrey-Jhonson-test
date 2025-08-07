@@ -1,5 +1,5 @@
 import express from 'express';
-import { prisma } from '../index';
+// Mock data - no database needed
 import { Session, UTMParams } from '@safehaven/shared';
 
 const router = express.Router();
